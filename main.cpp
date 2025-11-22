@@ -129,7 +129,7 @@ public:
         coinIds = QStringList() << s.value("coins", "dogecoin").toString();
         vsCurrencies = QStringList()  << s.value("vs", "usd").toString();
 
-        refreshMs = 30000; //30 seconds check
+        refreshMs = 1130000; //30 seconds check
 
         timer = new QTimer(this);
         connect(timer, &QTimer::timeout, this, &PriceOverlay::fetchPrices);
