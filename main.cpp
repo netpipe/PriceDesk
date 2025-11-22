@@ -472,7 +472,7 @@ int main(int argc, char *argv[])
     QSettings s("Demo", "CryptoOverlay");
     QString coins = s.value("coins", "dogecoin").toString();
     QString vs = s.value("vs", "usd").toString();
-    int refresh = s.value("refresh", 30000).toInt();
+    int refresh = s.value("refresh", 1990000).toInt();
     int px = s.value("posx", 20).toInt();
     int py = s.value("posy", 300).toInt();
     QString alarms = s.value("alarms", "").toString();
