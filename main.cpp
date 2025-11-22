@@ -124,9 +124,10 @@ public:
                       "QLabel { color: white; }");
 
         // defaults
-        coinIds = QStringList() << "dogecoin";
 
-        vsCurrencies = QStringList() << "usd";
+        QSettings s("Demo", "CryptoOverlay");
+        coinIds = QStringList() << s.value("coins", "dogecoin").toString();
+        vsCurrencies = QStringList()  << s.value("vs", "usd").toString();
 
         refreshMs = 30000; //30 seconds check
 
@@ -178,7 +179,7 @@ public:
     }
 
     // show chart for first coin/currency
-    void requestChart(int days = 7) {
+    void requestChart(int days = 2) {
         if (coinIds.isEmpty() || vsCurrencies.isEmpty()) return;
         QString id = coinIds.first();
         QString vs = vsCurrencies.first();
