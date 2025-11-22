@@ -108,7 +108,7 @@ public:
     PriceOverlay(QNetworkAccessManager* mgr, QWidget* parent=nullptr)
         : QWidget(parent), manager(mgr)
     {
-        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
         setAttribute(Qt::WA_TranslucentBackground);
         setAttribute(Qt::WA_ShowWithoutActivating);
 
