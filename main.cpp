@@ -128,7 +128,7 @@ public:
 
         vsCurrencies = QStringList() << "usd";
 
-        refreshMs = 11130000;
+        refreshMs = 30000; //30 seconds check
 
         timer = new QTimer(this);
         connect(timer, &QTimer::timeout, this, &PriceOverlay::fetchPrices);
