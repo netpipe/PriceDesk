@@ -422,7 +422,7 @@ public:
         QSettings s("Demo", "CryptoOverlay");
         coinEdit->setText(s.value("coins", "dogecoin").toString());
         vsEdit->setText(s.value("vs", "usd").toString());
-        refreshSpin->setValue(s.value("refresh", 30000).toInt());
+        refreshSpin->setValue(s.value("refresh", 130000).toInt());
         posXSpin->setValue(s.value("posx", overlay->x()).toInt());
         posYSpin->setValue(s.value("posy", overlay->y()).toInt());
         alarmText->setPlainText(s.value("alarms", "").toString());
