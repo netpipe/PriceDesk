@@ -239,127 +239,179 @@ protected:
     }
 
 private slots:
-    void processReply(QString currency, bool hasPercent, QNetworkReply* reply) {
-        if (reply->error() != QNetworkReply::NoError) {
-            // fill all labels belonging to this currency with error
-            for (int ci = 0; ci < coinIds.size(); ++ci) {
-                int idx = ci * vsCurrencies.size() + vsCurrencies.indexOf(currency);
-                labelMatrix[idx]->setText("Error");
-            }
-            reply->deleteLater();
-            return;
-        }
+    // --- call this whenever coins or currencies change ---
 
-        QByteArray data = reply->readAll();
 
-        if (hasPercent) {
-            // /markets endpoint → parse full percent change fields
-            QJsonArray arr = QJsonDocument::fromJson(data).array();
-            for (const QJsonValue& v : arr) {
-                QJsonObject o = v.toObject();
-                QString id = o["id"].toString();
-
-                int ci = coinIds.indexOf(id);
-                int vi = vsCurrencies.indexOf(currency);
-                int idx = ci * vsCurrencies.size() + vi;
-
-                double price = o["current_price"].toDouble();
-                double p1h  = o["price_change_percentage_1h_in_currency"].toDouble();
-                double p24h = o["price_change_percentage_24h_in_currency"].toDouble();
-                double p7d  = o["price_change_percentage_7d_in_currency"].toDouble();
-
-                QString text = QString(
-                    "%1 (%2)\n"
-                    "Price: %3\n"
-                    "1h: %4%\n"
-                    "24h: %5%\n"
-                    "7d: %6%"
-                ).arg(id)
-                 .arg(currency.toUpper())
-                 .arg(price)
-                 .arg(p1h)
-                 .arg(p24h)
-                 .arg(p7d);
-
-                labelMatrix[idx]->setText(text);
-            }
-        } else {
-            // /simple/price endpoint → parse basic price only
-            QJsonObject root = QJsonDocument::fromJson(data).object();
-            for (int ci = 0; ci < coinIds.size(); ++ci) {
-                QString coin = coinIds[ci];
-                int vi = vsCurrencies.indexOf(currency);
-                int idx = ci * vsCurrencies.size() + vi;
-
-                double price = root[coin].toObject()[currency].toDouble();
-                labelMatrix[idx]->setText(
-                    QString("%1 (%2): %3")
-                    .arg(coin)
-                    .arg(currency.toUpper())
-                    .arg(price));
-            }
-        }
-
-        reply->deleteLater();
-    }
-
+    // --- call this to start fetching; it launches one request per currency ---
     void fetchPrices() {
-        for (const QString& cur : vsCurrencies) {
-            bool wantPercent = (cur == "usd");   // USD: percent changes OK
-            fetchForCurrency(cur, wantPercent);
+        if (coinIds.isEmpty() || vsCurrencies.isEmpty()) return;
+
+        // ensure labels reflect current coin/currency layout
+        rebuildLabels();
+
+        for (const QString &currency : vsCurrencies) {
+            fetchForCurrency(currency);
         }
     }
 
-
-    void fetchForCurrency(QString currency, bool wantPercentChanges) {
-        QString ids = coinIds.join(",");
-
-        QString url;
-
-        if (wantPercentChanges) {
-            url = QString(
-                "https://api.coingecko.com/api/v3/coins/markets?"
-                "vs_currency=%1&ids=%2&price_change_percentage=1h,24h,7d"
-            ).arg(currency).arg(ids);
-        } else {
-            url = QString(
-                "https://api.coingecko.com/api/v3/simple/price?"
-                "ids=%1&vs_currencies=%2"
-            ).arg(ids).arg(currency);
-        }
+    // --- make one request per currency using /markets for percent changes ---
+    void fetchForCurrency(const QString &currency) {
+        const QString ids = coinIds.join(",");
+        // use markets endpoint which supports percent changes per currency
+        const QString url = QString(
+            "https://api.coingecko.com/api/v3/coins/markets?"
+            "vs_currency=%1&ids=%2&price_change_percentage=1h,24h,7d"
+        ).arg(currency, ids);
 
         QNetworkRequest req{ QUrl(url) };
         auto reply = manager->get(QNetworkRequest(QUrl(url)));
 
 
-        connect(reply, &QNetworkReply::finished,
-                this, [=]() { processReply(currency, wantPercentChanges, reply); });
+        // capture currency by value so the lambda knows which currency this reply was for
+        connect(reply, &QNetworkReply::finished, this, [this, reply, currency]() {
+            processReply(currency, reply);
+        });
     }
+
+    // --- process each reply and write only to safe indices ---
+    void processReply(const QString &currency, QNetworkReply* reply) {
+        // compute column index for this currency
+        const int vi = vsCurrencies.indexOf(currency);
+        if (vi < 0) {
+            // unknown currency (maybe user removed it while fetch was in-flight) — ignore
+            reply->deleteLater();
+            return;
+        }
+
+        if (reply->error() != QNetworkReply::NoError) {
+            // write "Error" into all slots for this currency
+            for (int ci = 0; ci < coinIds.size(); ++ci) {
+                const int idx = ci * vsCurrencies.size() + vi;
+                if (idx >= 0 && idx < labelMatrix.size()) {
+                    labelMatrix[idx]->setText("Error");
+                }
+            }
+            reply->deleteLater();
+            return;
+        }
+
+        const QByteArray body = reply->readAll();
+        reply->deleteLater();
+
+        // parse markets response (array of coin objects)
+        QJsonDocument doc = QJsonDocument::fromJson(body);
+        if (!doc.isArray()) {
+            // unexpected response — mark slots as N/A
+            for (int ci = 0; ci < coinIds.size(); ++ci) {
+                const int idx = ci * vsCurrencies.size() + vi;
+                if (idx >= 0 && idx < labelMatrix.size()) labelMatrix[idx]->setText("N/A");
+            }
+            return;
+        }
+
+        QJsonArray arr = doc.array();
+
+        // Build a quick map id -> object for faster lookup
+        QHash<QString, QJsonObject> map;
+        for (const QJsonValue &v : arr) {
+            if (!v.isObject()) continue;
+            QJsonObject o = v.toObject();
+            QString id = o.value("id").toString();
+            if (!id.isEmpty()) map.insert(id, o);
+        }
+
+        // Fill each coin × this currency slot using map (preserves order)
+        for (int ci = 0; ci < coinIds.size(); ++ci) {
+            const QString coin = coinIds[ci];
+            const int idx = ci * vsCurrencies.size() + vi;
+
+            // bounds check before writing
+            if (!(idx >= 0 && idx < labelMatrix.size())) continue;
+
+            if (!map.contains(coin)) {
+                // coin not present in API response (could be invalid id) -> show N/A
+                labelMatrix[idx]->setText(QString("%1 (%2): N/A").arg(coin).arg(currency.toUpper()));
+                continue;
+            }
+
+            QJsonObject o = map.value(coin);
+
+            // safe reads: check contains() and isNull()
+            auto safeDouble = [&](const QJsonObject &obj, const QString &key) -> double {
+                if (!obj.contains(key) || obj.value(key).isNull()) return std::numeric_limits<double>::quiet_NaN();
+                return obj.value(key).toDouble();
+            };
+
+            double price = safeDouble(o, "current_price");
+            double p1h  = safeDouble(o, "price_change_percentage_1h_in_currency");
+            double p24  = safeDouble(o, "price_change_percentage_24h_in_currency");
+            double p7d  = safeDouble(o, "price_change_percentage_7d_in_currency");
+
+            auto pctStr = [&](double pct) -> QString {
+                if (qIsNaN(pct)) return QString("N/A");
+                return QString("%1% %2").arg(fabs(pct), 0, 'f', 2).arg(pct >= 0.0 ? "↑" : "↓");
+            };
+
+            QString text;
+            if (qIsNaN(price)) {
+                text = QString("%1 (%2): -").arg(coin).arg(currency.toUpper());
+            } else {
+                text = QString("%1 (%2)\nPrice: %3\n1h: %4\n24h: %5\n7d: %6")
+                           .arg(coin)
+                           .arg(currency.toUpper())
+                           .arg(price)
+                           .arg(pctStr(p1h))
+                           .arg(pctStr(p24))
+                           .arg(pctStr(p7d));
+            }
+
+            labelMatrix[idx]->setText(text);
+
+            // alarms (only check if alarm currency matches this currency)
+            for (auto &a : alarms) {
+                if (a.coin == coin && a.currency == currency) {
+                    if (!qIsNaN(price) && price >= a.threshold) {
+                        QString msg = QString("%1 %2 reached %3 (threshold %4)")
+                                          .arg(coin).arg(currency.toUpper()).arg(price).arg(a.threshold);
+                        emit alarmTriggered(msg);
+                    }
+                }
+            }
+        }
+    }
+
+
 
 
 
 private:
     void rebuildLabels() {
-        // clear
-        QLayoutItem* child;
+        // expected number of labels
+        const int expected = coinIds.size() * vsCurrencies.size();
+
+        // clear existing layout widgets
+        QLayoutItem* item;
         QLayout* cl = container->layout();
-        while ((child = cl->takeAt(0)) != nullptr) {
-            QWidget* w = child->widget();
+        while ((item = cl->takeAt(0)) != nullptr) {
+            QWidget* w = item->widget();
             if (w) w->deleteLater();
-            delete child;
+            delete item;
         }
         labelMatrix.clear();
+        labelMatrix.reserve(expected);
 
-        // create labels grid: coin-major, currencies-minor (vertical)
-        for (const QString& coin : coinIds) {
-            for (const QString& cur : vsCurrencies) {
+        // create label for each coin × currency slot in row-major order
+        for (const QString &coin : coinIds) {
+            for (const QString &cur : vsCurrencies) {
                 QLabel* lbl = new QLabel(QString("%1 (%2): ...").arg(coin).arg(cur.toUpper()), this);
                 lbl->setStyleSheet("color:white; font-weight:bold; font-size:14px;");
                 cl->addWidget(lbl);
                 labelMatrix.append(lbl);
             }
         }
-        // add small hint
+
+        // if sizes differ, this ensures indexing won't go out of range later
+        // add a hint label
         QLabel* hint = new QLabel("Drag to move. Right-click tray for options.", this);
         hint->setStyleSheet("color:rgba(255,255,255,0.7); font-size:11px;");
         cl->addWidget(hint);
