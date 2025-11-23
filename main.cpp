@@ -334,6 +334,8 @@ private slots:
                 continue;
             }
 
+            labelMatrix[idx]->setTextFormat(Qt::RichText);
+
             QJsonObject o = map.value(coin);
 
             // safe reads: check contains() and isNull()
@@ -349,21 +351,44 @@ private slots:
 
             auto pctStr = [&](double pct) -> QString {
                 if (qIsNaN(pct)) return QString("N/A");
-                return QString("%1% %2").arg(fabs(pct), 0, 'f', 2).arg(pct >= 0.0 ? "↑" : "↓");
+
+                QString arrow;
+                if (pct >= 0)
+                    arrow = "<span style='color:lime'>↑</span>";
+                else
+                    arrow = "<span style='color:red'>↓</span>";
+
+                return QString("%1% %2")
+                        .arg(fabs(pct), 0, 'f', 2)
+                        .arg(arrow);
             };
+
 
             QString text;
             if (qIsNaN(price)) {
-                text = QString("%1 (%2): -").arg(coin).arg(currency.toUpper());
-            } else {
-                text = QString("%1 (%2)\nPrice: %3\n1h: %4\n24h: %5\n7d: %6")
+                text = QString("<b>%1 (%2)</b>: -")
                            .arg(coin)
-                           .arg(currency.toUpper())
-                           .arg(price)
-                           .arg(pctStr(p1h))
-                           .arg(pctStr(p24))
-                           .arg(pctStr(p7d));
+                           .arg(currency.toUpper());
+            } else {
+                text = QString(
+                    "<b>%1 (%2)</b><br>"
+                    "Price: %3<br>"
+                    "1h: %4<br>"
+                    "24h: %5<br>"
+                    "7d: %6"
+                )
+                .arg(coin)
+                .arg(currency.toUpper())
+                .arg(price)
+                .arg(pctStr(p1h))
+                .arg(pctStr(p24))
+                .arg(pctStr(p7d));
             }
+
+            // IMPORTANT: force RichText
+            labelMatrix[idx]->setTextFormat(Qt::RichText);
+       //     labelMatrix[idx]->setText(text);
+
 
             labelMatrix[idx]->setText(text);
 
