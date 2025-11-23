@@ -370,6 +370,7 @@ private slots:
                            .arg(coin)
                            .arg(currency.toUpper());
             } else {
+                if (0){
                 text = QString(
                     "<b>%1 (%2)</b><br>"
                     "Price: %3<br>"
@@ -383,6 +384,16 @@ private slots:
                 .arg(pctStr(p1h))
                 .arg(pctStr(p24))
                 .arg(pctStr(p7d));
+            }else{
+                text = QString("%1 (%2)\nPrice: %3\n1h: %4\n24h: %5\n7d: %6")
+                           .arg(coin)
+                           .arg(currency.toUpper())
+                           .arg(price)
+                           .arg(pctStr(p1h))
+                           .arg(pctStr(p24))
+                           .arg(pctStr(p7d));
+                }
+
             }
 
             // IMPORTANT: force RichText
